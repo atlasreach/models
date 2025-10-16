@@ -14,15 +14,28 @@
     <!-- Config Section -->
     <div class="bg-white rounded-lg shadow p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">Configuration</h2>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">MaxStudio API Key</label>
-        <input
-          id="apiKey"
-          type="password"
-          value="bae0c714-f708-4d00-99b3-b740d0af3fda"
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-          placeholder="Your MaxStudio API key"
-        />
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Proxy Worker URL (Cloudflare Worker)</label>
+          <input
+            id="proxyUrl"
+            type="text"
+            value=""
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            placeholder="https://your-worker.your-subdomain.workers.dev"
+          />
+          <p class="mt-1 text-xs text-gray-500">Leave blank to call API directly (won't work due to CORS)</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">MaxStudio API Key</label>
+          <input
+            id="apiKey"
+            type="password"
+            value="bae0c714-f708-4d00-99b3-b740d0af3fda"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            placeholder="Your MaxStudio API key (only if not using proxy)"
+          />
+        </div>
       </div>
     </div>
 
@@ -141,15 +154,24 @@ function downloadBlob(blob, filename) {
 }
 
 // ========== MAXSTUDIO API CALLS ==========
+function getApiUrl(endpoint) {
+  const proxyUrl = document.getElementById('proxyUrl').value.trim();
+  if (proxyUrl) {
+    return `${proxyUrl}${endpoint}`;
+  }
+  return `https://api.maxstudio.ai${endpoint}`;
+}
+
 async function enhanceImage(base64Image, apiKey) {
   log('Calling Image Enhancer API...');
   try {
-    const response = await fetch('https://api.maxstudio.ai/image-enhancer', {
+    const proxyUrl = document.getElementById('proxyUrl').value.trim();
+    const headers = {'Content-Type': 'application/json'};
+    if (!proxyUrl) headers['x-api-key'] = apiKey;
+
+    const response = await fetch(getApiUrl('/image-enhancer'), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey
-      },
+      headers: headers,
       body: JSON.stringify({ image: base64Image })
     });
 
@@ -175,10 +197,14 @@ async function pollEnhanceStatus(jobId, apiKey, maxWaitMs = 180000) {
   log('Polling for enhancement completion...');
   const startTime = Date.now();
   let interval = 2000;
+  const proxyUrl = document.getElementById('proxyUrl').value.trim();
 
   while (Date.now() - startTime < maxWaitMs) {
-    const response = await fetch(`https://api.maxstudio.ai/image-enhancer/${jobId}`, {
-      headers: { 'x-api-key': apiKey }
+    const headers = {};
+    if (!proxyUrl) headers['x-api-key'] = apiKey;
+
+    const response = await fetch(getApiUrl(`/enhance-status/${jobId}`), {
+      headers: headers
     });
 
     if (!response.ok) throw new Error(`Status check failed: ${response.status}`);
@@ -204,12 +230,13 @@ async function pollEnhanceStatus(jobId, apiKey, maxWaitMs = 180000) {
 
 async function detectFaces(imageUrl, apiKey) {
   log('Detecting faces in image...');
-  const response = await fetch('https://api.maxstudio.ai/detect-face-image', {
+  const proxyUrl = document.getElementById('proxyUrl').value.trim();
+  const headers = {'Content-Type': 'application/json'};
+  if (!proxyUrl) headers['x-api-key'] = apiKey;
+
+  const response = await fetch(getApiUrl('/detect'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey
-    },
+    headers: headers,
     body: JSON.stringify({ imageUrl })
   });
 
@@ -225,12 +252,13 @@ async function detectFaces(imageUrl, apiKey) {
 
 async function faceSwap(targetImageUrl, parisFaceUrl, faceCoords, apiKey) {
   log('Starting face swap...');
-  const response = await fetch('https://api.maxstudio.ai/faceswap', {
+  const proxyUrl = document.getElementById('proxyUrl').value.trim();
+  const headers = {'Content-Type': 'application/json'};
+  if (!proxyUrl) headers['x-api-key'] = apiKey;
+
+  const response = await fetch(getApiUrl('/swap'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey
-    },
+    headers: headers,
     body: JSON.stringify({
       mediaUrl: targetImageUrl,
       faces: [{
@@ -261,10 +289,14 @@ async function pollSwapStatus(jobId, apiKey, maxWaitMs = 180000) {
   log('Polling for face swap completion...');
   const startTime = Date.now();
   let interval = 2000;
+  const proxyUrl = document.getElementById('proxyUrl').value.trim();
 
   while (Date.now() - startTime < maxWaitMs) {
-    const response = await fetch(`https://api.maxstudio.ai/faceswap/${jobId}`, {
-      headers: { 'x-api-key': apiKey }
+    const headers = {};
+    if (!proxyUrl) headers['x-api-key'] = apiKey;
+
+    const response = await fetch(getApiUrl(`/swap-status/${jobId}`), {
+      headers: headers
     });
 
     if (!response.ok) throw new Error(`Swap status check failed: ${response.status}`);
