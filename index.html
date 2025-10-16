@@ -143,25 +143,32 @@ function downloadBlob(blob, filename) {
 // ========== MAXSTUDIO API CALLS ==========
 async function enhanceImage(base64Image, apiKey) {
   log('Calling Image Enhancer API...');
-  const response = await fetch('https://api.maxstudio.ai/image-enhancer', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey
-    },
-    body: JSON.stringify({ image: base64Image })
-  });
+  try {
+    const response = await fetch('https://api.maxstudio.ai/image-enhancer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      },
+      body: JSON.stringify({ image: base64Image })
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Enhance failed (${response.status}): ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Enhance failed (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.jobId) throw new Error('No jobId returned from enhancer');
+
+    log(`Enhancement job created: ${data.jobId}`);
+    return data.jobId;
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Network error - CORS issue detected. Please use GitHub Pages or add CORS proxy.');
+    }
+    throw error;
   }
-
-  const data = await response.json();
-  if (!data.jobId) throw new Error('No jobId returned from enhancer');
-
-  log(`Enhancement job created: ${data.jobId}`);
-  return data.jobId;
 }
 
 async function pollEnhanceStatus(jobId, apiKey, maxWaitMs = 180000) {
