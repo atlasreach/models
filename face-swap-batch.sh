@@ -17,7 +17,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 MODEL_NAME="$1"
-API_KEY="bae0c714-f708-4d00-99b3-b740d0af3fda"
+API_KEY="sk_blo63qa2epbwjq4tdgod"
 
 SOURCE_DIR="${MODEL_NAME}"
 SOURCE_FACE="${SOURCE_DIR}/source.jpg"
@@ -78,20 +78,40 @@ TARGETS_DIR = "$TARGETS_DIR"
 OUTPUT_DIR = "$OUTPUT_DIR"
 
 def upload_image(file_path):
-    """Upload image and return public URL"""
-    with open(file_path, 'rb') as f:
-        img_base64 = base64.b64encode(f.read()).decode('utf-8')
+    """Upload image to AWS S3 and return public URL"""
+    import boto3
+    from pathlib import Path
 
-    resp = requests.post(
-        'https://freeimage.host/api/1/upload',
-        data={'key': '6d207e02198a847aa98d0a2a901485a5', 'source': img_base64, 'format': 'json'}
+    # AWS credentials - load from environment or .aws-credentials file
+    import os
+    aws_key = os.getenv('AWS_ACCESS_KEY_ID', 'YOUR_AWS_ACCESS_KEY')
+    aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY', 'YOUR_AWS_SECRET_KEY')
+    aws_region = os.getenv('AWS_REGION', 'us-east-2')
+    bucket_name = os.getenv('AWS_BUCKET_NAME', 'modelcrew')
+
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=aws_key,
+        aws_secret_access_key=aws_secret,
+        region_name=aws_region
     )
+    file_name = Path(file_path).name
 
-    if resp.status_code == 200:
-        data = resp.json()
-        if data['status_code'] == 200:
-            return data['image']['url']
-    return None
+    try:
+        # Upload with public-read ACL
+        s3_client.upload_file(
+            file_path,
+            bucket_name,
+            file_name,
+            ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/jpeg'}
+        )
+
+        # Return public URL
+        url = f"https://{bucket_name}.s3.us-east-2.amazonaws.com/{file_name}"
+        return url
+    except Exception as e:
+        print(f"    Upload error: {e}")
+        return None
 
 def enhance_image(base64_image):
     """Enhance image and return base64 result"""
@@ -208,19 +228,13 @@ for idx, target_file in enumerate(target_files, 1):
 
         # Step 2: Upload enhanced target
         print("[2/4] Uploading enhanced target...")
-        # Upload directly from base64
-        resp = requests.post(
-            'https://freeimage.host/api/1/upload',
-            data={'key': '6d207e02198a847aa98d0a2a901485a5', 'source': enhanced_base64, 'format': 'json'}
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if data['status_code'] == 200:
-                enhanced_url = data['image']['url']
-            else:
-                enhanced_url = None
-        else:
-            enhanced_url = None
+        # Save to temp file and upload
+        temp_path = f'/tmp/enhanced_{idx}.jpg'
+        with open(temp_path, 'wb') as f:
+            f.write(base64.b64decode(enhanced_base64))
+
+        enhanced_url = upload_image(temp_path)
+        os.remove(temp_path)
 
         if not enhanced_url:
             print("  ✗ Upload failed")
@@ -311,9 +325,4 @@ echo "Model: $MODEL_NAME"
 echo "Training images saved to: $OUTPUT_DIR"
 echo ""
 echo "You can now use these images to train your AI model!"
-echo "======================================"
-
-# macOS notification (if on Mac)
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    osascript -e "display notification \"$success_count images ready for training\" with title \"$MODEL_NAME Training Dataset Complete\""
-fi
+echo "===================================="
