@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Model Face Swap - Paris</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+  <div class="max-w-4xl mx-auto p-6">
+    <h1 class="text-3xl font-bold text-gray-800 mb-2">AI Model Face Swap - Paris</h1>
+    <p class="text-gray-600 mb-6">Upload Paris's face + target image → Enhance → Detect → Swap → Enhance → Download</p>
+
+    <!-- Config Section -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">Configuration</h2>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">MaxStudio API Key</label>
+        <input
+          id="apiKey"
+          type="password"
+          value="bae0c714-f708-4d00-99b3-b740d0af3fda"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          placeholder="Your MaxStudio API key"
+        />
+      </div>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">Upload Images</h2>
+
+      <div class="space-y-4">
+        <!-- Paris Face -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Paris's Face (your AI model)</label>
+          <input
+            id="parisFace"
+            type="file"
+            accept="image/*"
+            class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+          />
+          <p class="mt-1 text-xs text-gray-500">This face will be swapped onto target images</p>
+        </div>
+
+        <!-- Target Image -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Target Image (body/scene)</label>
+          <input
+            id="targetImage"
+            type="file"
+            accept="image/*"
+            class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          />
+          <p class="mt-1 text-xs text-gray-500">The image where Paris's face will be placed</p>
+        </div>
+
+        <!-- Process Button -->
+        <button
+          id="processBtn"
+          class="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Start Processing
+        </button>
+      </div>
+    </div>
+
+    <!-- Progress Log -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">Progress</h2>
+      <div id="log" class="space-y-2 text-sm font-mono text-gray-700 max-h-96 overflow-y-auto"></div>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="bg-white rounded-lg shadow p-6 hidden">
+      <h2 class="text-lg font-semibold mb-4">Results</h2>
+      <div class="space-y-4">
+        <div>
+          <p class="text-sm font-medium text-gray-700 mb-2">Final Enhanced Image:</p>
+          <img id="finalImage" class="w-full rounded-lg border" />
+        </div>
+        <button
+          id="downloadBtn"
+          class="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition"
+        >
+          Download Image
+        </button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ========== LOGGING ==========
+function log(message, type = 'info') {
+  const logEl = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = type === 'error' ? 'text-red-600' : type === 'success' ? 'text-green-600' : 'text-gray-700';
+  entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  logEl.appendChild(entry);
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log(message);
+}
+
+// ========== HELPER FUNCTIONS ==========
+function fileToBase64NoPrefix(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      const base64 = result.split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function base64ToBlob(base64, mimeType = 'image/jpeg') {
+  const byteString = atob(base64);
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) {
+    ia[i] = byteString.charCodeAt(i);
+  }
+  return new Blob([ab], { type: mimeType });
+}
+
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ========== MAXSTUDIO API CALLS ==========
+async function enhanceImage(base64Image, apiKey) {
+  log('Calling Image Enhancer API...');
+  const response = await fetch('https://api.maxstudio.ai/image-enhancer', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey
+    },
+    body: JSON.stringify({ image: base64Image })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Enhance failed (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  if (!data.jobId) throw new Error('No jobId returned from enhancer');
+
+  log(`Enhancement job created: ${data.jobId}`);
+  return data.jobId;
+}
+
+async function pollEnhanceStatus(jobId, apiKey, maxWaitMs = 180000) {
+  log('Polling for enhancement completion...');
+  const startTime = Date.now();
+  let interval = 2000;
+
+  while (Date.now() - startTime < maxWaitMs) {
+    const response = await fetch(`https://api.maxstudio.ai/image-enhancer/${jobId}`, {
+      headers: { 'x-api-key': apiKey }
+    });
+
+    if (!response.ok) throw new Error(`Status check failed: ${response.status}`);
+
+    const data = await response.json();
+    log(`Enhancement status: ${data.status}`);
+
+    if (data.status === 'completed' && data.result) {
+      log('Enhancement completed!', 'success');
+      return data.result; // Base64 string
+    }
+
+    if (data.status === 'failed') {
+      throw new Error('Enhancement job failed');
+    }
+
+    await sleep(interval);
+    interval = Math.min(interval * 1.2, 5000);
+  }
+
+  throw new Error('Enhancement timed out');
+}
+
+async function detectFaces(imageUrl, apiKey) {
+  log('Detecting faces in image...');
+  const response = await fetch('https://api.maxstudio.ai/detect-face-image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey
+    },
+    body: JSON.stringify({ imageUrl })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Face detection failed (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  log(`Detected ${data.faces?.length || 0} face(s)`, 'success');
+  return data.faces || [];
+}
+
+async function faceSwap(targetImageUrl, parisFaceUrl, faceCoords, apiKey) {
+  log('Starting face swap...');
+  const response = await fetch('https://api.maxstudio.ai/faceswap', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey
+    },
+    body: JSON.stringify({
+      mediaUrl: targetImageUrl,
+      faces: [{
+        newFace: parisFaceUrl,
+        originalFace: {
+          x: faceCoords.x,
+          y: faceCoords.y,
+          width: faceCoords.width,
+          height: faceCoords.height
+        }
+      }]
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Face swap failed (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  if (!data.jobId) throw new Error('No jobId returned from face swap');
+
+  log(`Face swap job created: ${data.jobId}`);
+  return data.jobId;
+}
+
+async function pollSwapStatus(jobId, apiKey, maxWaitMs = 180000) {
+  log('Polling for face swap completion...');
+  const startTime = Date.now();
+  let interval = 2000;
+
+  while (Date.now() - startTime < maxWaitMs) {
+    const response = await fetch(`https://api.maxstudio.ai/faceswap/${jobId}`, {
+      headers: { 'x-api-key': apiKey }
+    });
+
+    if (!response.ok) throw new Error(`Swap status check failed: ${response.status}`);
+
+    const data = await response.json();
+    log(`Face swap status: ${data.status}`);
+
+    if (data.status === 'completed' && data.result?.mediaUrl) {
+      log('Face swap completed!', 'success');
+      return data.result.mediaUrl;
+    }
+
+    if (data.status === 'failed') {
+      throw new Error('Face swap job failed');
+    }
+
+    await sleep(interval);
+    interval = Math.min(interval * 1.2, 5000);
+  }
+
+  throw new Error('Face swap timed out');
+}
+
+// ========== MAIN WORKFLOW ==========
+let finalBlobGlobal = null;
+
+async function processImages() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const parisFaceFile = document.getElementById('parisFace').files?.[0];
+  const targetImageFile = document.getElementById('targetImage').files?.[0];
+
+  // Validation
+  if (!apiKey) {
+    alert('Please enter your MaxStudio API key');
+    return;
+  }
+  if (!parisFaceFile || !targetImageFile) {
+    alert('Please select both Paris face and target image');
+    return;
+  }
+
+  const processBtn = document.getElementById('processBtn');
+  processBtn.disabled = true;
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('results').classList.add('hidden');
+
+  try {
+    log('=== STARTING WORKFLOW ===', 'success');
+
+    // Step 1: Convert files to base64
+    log('Step 1: Reading files...');
+    const parisFaceBase64 = await fileToBase64NoPrefix(parisFaceFile);
+    const targetImageBase64 = await fileToBase64NoPrefix(targetImageFile);
+
+    // Step 2: Enhance target image (first time)
+    log('Step 2: Enhancing target image (first pass)...');
+    const targetEnhanceJobId = await enhanceImage(targetImageBase64, apiKey);
+    const targetEnhancedBase64 = await pollEnhanceStatus(targetEnhanceJobId, apiKey);
+
+    // Convert enhanced image to URL for face detection
+    const targetEnhancedBlob = base64ToBlob(targetEnhancedBase64);
+    const targetEnhancedUrl = URL.createObjectURL(targetEnhancedBlob);
+
+    // Step 3: Detect faces in enhanced target
+    log('Step 3: Detecting faces in enhanced image...');
+    const faces = await detectFaces(targetEnhancedUrl, apiKey);
+
+    if (faces.length === 0) {
+      throw new Error('No faces detected in target image!');
+    }
+
+    log(`Using first detected face at (${faces[0].x}, ${faces[0].y})`);
+
+    // Step 4: Upload Paris face to temporary URL (using data URL)
+    const parisFaceDataUrl = `data:image/jpeg;base64,${parisFaceBase64}`;
+
+    // Step 5: Face swap
+    log('Step 4: Swapping Paris face onto target...');
+    const swapJobId = await faceSwap(targetEnhancedUrl, parisFaceDataUrl, faces[0], apiKey);
+    const swappedImageUrl = await pollSwapStatus(swapJobId, apiKey);
+
+    // Step 6: Download swapped image and enhance again
+    log('Step 5: Downloading swapped image for final enhancement...');
+    const swappedResponse = await fetch(swappedImageUrl);
+    const swappedBlob = await swappedResponse.blob();
+    const swappedBase64 = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(swappedBlob);
+    });
+
+    log('Step 6: Final enhancement (second pass)...');
+    const finalEnhanceJobId = await enhanceImage(swappedBase64, apiKey);
+    const finalEnhancedBase64 = await pollEnhanceStatus(finalEnhanceJobId, apiKey);
+
+    // Step 7: Display and prepare for download
+    log('=== WORKFLOW COMPLETE ===', 'success');
+    finalBlobGlobal = base64ToBlob(finalEnhancedBase64);
+    const finalImageUrl = URL.createObjectURL(finalBlobGlobal);
+
+    document.getElementById('finalImage').src = finalImageUrl;
+    document.getElementById('results').classList.remove('hidden');
+
+    log('✓ Image ready! Click Download to save to your Paris folder.', 'success');
+
+  } catch (error) {
+    log(`ERROR: ${error.message}`, 'error');
+    alert(`Error: ${error.message}`);
+    console.error(error);
+  } finally {
+    processBtn.disabled = false;
+  }
+}
+
+document.getElementById('processBtn').addEventListener('click', processImages);
+
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  if (finalBlobGlobal) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const fileName = `Paris_${timestamp}.jpg`;
+    downloadBlob(finalBlobGlobal, fileName);
+    log(`Downloaded: ${fileName}`, 'success');
+  }
+});
+
+log('App ready! Select Paris face + target image, then click Start Processing.', 'success');
+</script>
+</body>
+</html>
