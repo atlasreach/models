@@ -157,7 +157,9 @@ function downloadBlob(blob, filename) {
 function getApiUrl(endpoint) {
   const proxyUrl = document.getElementById('proxyUrl').value.trim();
   if (proxyUrl) {
-    return `${proxyUrl}${endpoint}`;
+    // Remove trailing slash from proxy URL
+    const baseUrl = proxyUrl.replace(/\/$/, '');
+    return `${baseUrl}/api${endpoint}`;
   }
   return `https://api.maxstudio.ai${endpoint}`;
 }
@@ -169,7 +171,7 @@ async function enhanceImage(base64Image, apiKey) {
     const headers = {'Content-Type': 'application/json'};
     if (!proxyUrl) headers['x-api-key'] = apiKey;
 
-    const response = await fetch(getApiUrl('/image-enhancer'), {
+    const response = await fetch(getApiUrl('/enhance'), {
       method: 'POST',
       headers: headers,
       body: JSON.stringify({ image: base64Image })
