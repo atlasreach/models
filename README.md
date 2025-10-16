@@ -56,6 +56,18 @@ mkdir -p Paris/targets
 
 All processed images will be in `Paris_Training/` ready for AI model training!
 
+### 4. Download to Desktop (Optional)
+
+```bash
+./download-to-desktop.sh
+```
+
+This copies all training images to `~/Desktop/Paris/` with clean naming:
+- `paris1final.jpg`
+- `paris2final.jpg`
+- `paris3final.jpg`
+- etc.
+
 ## 📝 Typical Workflow with Claude
 
 Since you'll often upload images and ask Claude to organize them:

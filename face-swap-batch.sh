@@ -273,8 +273,8 @@ for idx, target_file in enumerate(target_files, 1):
             final_bytes = base64.b64decode(final_base64)
             print("  ✓ Final enhanced")
 
-        # Save result
-        output_filename = target_file.stem + '_final' + target_file.suffix
+        # Save result with model naming: paris1final.jpg, paris2final.jpg, etc.
+        output_filename = f"{MODEL_NAME.lower()}{idx}final.jpg"
         output_path = Path(OUTPUT_DIR) / output_filename
         with open(output_path, 'wb') as f:
             f.write(final_bytes)
