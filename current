@@ -1,0 +1,298 @@
+Awesome—here’s a copy-paste prompt for Claude Coding Assistant that will add the “wrapper” to your repo, call Anthropic for captions + recreation prompts, organize a LoRA-ready dataset, and drop in a kohya (LoRA) config. After that, I’ll tell you the cleanest way to move it to RunPod.
+
+👉 Prompt for Claude (paste this in Codespaces)
+You are working in this GitHub repo. Implement the following exactly.
+1) Folders
+Create:
+/dataset/clean
+/dataset/captions
+/dataset/prompts
+/dataset/meta
+/dataset/controls   # (we’ll fill on GPU later)
+/outputs/faceswapped   # existing faceswap output target
+/scripts
+/train
+2) 
+.env.sample
+Add:
+ANTHROPIC_API_KEY=replace_me
+TRIGGER_TOKEN=nksan-girl
+CLASS_TOKEN=woman
+3) 
+requirements.txt
+Add (or append) these minimal deps:
+Pillow
+imagehash
+requests
+opencv-python
+4) Script: 
+scripts/post_swap_caption.py
+Create a Python script that:
+Scans ./outputs/faceswapped for *.jpg|jpeg|png|webp
+
+
+Normalizes to JPEG (quality 92) into ./dataset/clean/{stem}-{phash8}.jpg
+
+
+Calls Anthropic Messages API (Claude) once per image to produce:
+
+
+caption (≤ 25 words) starting with: <TRIGGER_TOKEN> <CLASS_TOKEN>, ...
+
+
+recreation_prompt (40–80 words) (camera/lens/lighting/mood)
+
+
+style (5–12 tokens), sfw (bool), ar (“1:1”, “4:5”, “9:16”)
+
+
+If no ANTHROPIC_API_KEY, fall back to a rule-based caption.
+
+
+Writes:
+
+
+./dataset/captions/{basename}.txt ← caption only
+
+
+./dataset/prompts/{basename}.prompt.txt ← recreation_prompt only
+
+
+Appends one line to ./dataset/meta/meta.jsonl with:
+
+
+{
+  "path": "<dataset/clean/...jpg>",
+  "caption": "...",
+  "prompt": "...",
+  "style": [...],
+   "ar": "4:5",
+  "phash": "xxxxxxxx",
+  "source": "<original file path>",
+  "notes": "faceswap output v1"
+}
+
+
+
+
+Also write a quick Canny edges control (CPU-safe) to
+
+ ./dataset/controls/{basename}/edges.png. (Pose/depth we’ll do on GPU later.)
+
+
+Use env vars TRIGGER_TOKEN and CLASS_TOKEN; expose CLI flags:
+python3 scripts/post_swap_caption.py \
+  --images-dir ./outputs/faceswapped \
+  --trigger $TRIGGER_TOKEN \
+  --class-token $CLASS_TOKEN
+Anthropic call details (use Requests)
+POST https://api.anthropic.com/v1/messages
+
+
+Headers: x-api-key, anthropic-version: 2023-06-01, content-type: application/json
+
+
+Model: claude-3-5-sonnet-20240620
+
+
+Prompt (system or user) should instruct: return JSON only with keys:
+
+ caption, recreation_prompt, style, sfw, ar.
+
+ Ensure caption starts with "{TRIGGER_TOKEN} {CLASS_TOKEN}, ".
+
+
+If the JSON parse fails, fall back to rule-based.
+5) Script: 
+run_swap_and_caption.sh
+Create a bash wrapper that:
+Runs your existing face-swap batch (don’t change its flags)
+
+
+Then calls the caption script
+
+
+Content:
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 1) Face-swap (keep your current usage)
+./face-swap-batch.sh "$@"
+
+# 2) Caption + prompts + edges
+source .env || true
+TRIGGER_TOKEN="${TRIGGER_TOKEN:-nksan-girl}"
+CLASS_TOKEN="${CLASS_TOKEN:-woman}"
+
+python3 scripts/post_swap_caption.py \
+  --images-dir ./outputs/faceswapped \
+  --trigger "$TRIGGER_TOKEN" \
+  --class-token "$CLASS_TOKEN"
+Mark executable: chmod +x run_swap_and_caption.sh
+6) Kohya LoRA config: 
+train/config.toml
+Add a minimal SDXL LoRA config (tune later):
+[model]
+base_model = "sd_xl_base_1.0.safetensors"   # put path under /models if you keep local
+network_module = "networks.lora"
+network_dim = 16
+network_alpha = 16
+
+[training]
+output_dir = "train/output"
+logging_dir = "train/logs"
+resolution = 1024
+train_batch_size = 2
+learning_rate = 0.0001
+lr_scheduler = "cosine"
+max_train_steps = 3000
+mixed_precision = "bf16"
+save_every_n_steps = 500
+caption_extension = ".txt"
+shuffle_caption = true
+prior_loss_weight = 1.0
+min_bucket_reso = 640
+max_bucket_reso = 1536
+
+[data]
+train_dir = "dataset/clean"        # images here
+caption_dir = "dataset/captions"   # sidecar captions
+# optional: add your regularization class images:
+# reg_dir = "regularization/woman"
+
+[meta]
+trigger_token = "nksan-girl"
+class_token = "woman"
+7) 
+Makefile
+Add targets:
+.PHONY: swap caption preprocess pack
+
+swap:
+	./run_swap_and_caption.sh
+
+caption:
+	python3 scripts/post_swap_caption.py --images-dir ./outputs/faceswapped --trigger $${TRIGGER_TOKEN:-nksan-girl} --class-token $${CLASS_TOKEN:-woman}
+
+preprocess: caption
+
+pack:
+	zip -r artifact_for_runpod.zip dataset train/config.toml
+8) 
+README.md
+ (append “LoRA workflow” section)
+Document:
+Run pip install -r requirements.txt
+
+
+Set .env with ANTHROPIC_API_KEY, TRIGGER_TOKEN, CLASS_TOKEN
+
+
+Run make swap (or run face-swap then make caption)
+
+
+Train later on GPU with kohya using train/config.toml
+
+
+Do not remove or change existing face-swap scripts; just chain this after them.
+Deliverables: commit all new files and ensure make pack produces artifact_for_runpod.zip with:
+/dataset (clean images, captions, prompts, meta, controls/edges)
+
+
+/train/config.toml
+
+
+
+After Claude finishes
+What’s next / RunPod plan (simple + reliable)
+In Codespaces (CPU)
+
+
+Run your face-swap as usual.
+
+
+Run make preprocess (or make swap) to create captions, recreation prompts, and edges.
+
+
+Run make pack to produce artifact_for_runpod.zip.
+
+
+Move to RunPod (GPU) — two easy options:
+
+
+A. GitHub artifact: Commit + push. On RunPod, git clone your repo, then run:
+
+
+unzip artifact_for_runpod.zip
+(You can also attach it to a GitHub Release and wget it in the pod.)
+
+
+B. Direct upload: In RunPod workspace, use the UI “Upload” to drop artifact_for_runpod.zip into /workspace.
+
+
+On RunPod (GPU)
+
+
+Start a SDXL/Comfy/Kohya template pod (any CUDA 11.8+).
+
+
+Training (kohya):
+
+ From repo root (or where kohya is), run equivalent of:
+
+
+accelerate launch --mixed_precision=bf16 ./sd-scripts/train_network.py \
+  --pretrained_model_name_or_path /workspace/models/sd_xl_base_1.0.safetensors \
+  --train_data_dir dataset/clean \
+  --caption_extension .txt \
+  --output_dir train/output \
+  --logging_dir train/logs \
+  --resolution 1024 \
+  --network_module networks.lora \
+  --network_dim 16 --network_alpha 16 \
+  --learning_rate 1e-4 --lr_scheduler cosine \
+  --max_train_steps 3000 \
+  --train_batch_size 2 \
+  --min_bucket_reso 640 --max_bucket_reso 1536
+(Adjust paths to match your pod; or use the config.toml if your kohya build supports it.)
+
+
+(Optional) Generate pose/depth controls for “recreation” sets:
+
+
+Use ComfyUI preprocessors (OpenPose/Depth) on the clean images to write:
+
+
+dataset/controls/{basename}/pose.png
+dataset/controls/{basename}/depth.png
+
+
+
+
+Keep the edges.png we already created; pose/depth dramatically improves composition matching.
+
+
+After training (inference)
+
+
+Load your LoRA (e.g., nksan-girl-v1.safetensors at weight 0.6–0.8).
+
+
+For any specific photo you want to “recreate,” use:
+
+
+the saved dataset/prompts/{basename}.prompt.txt
+
+
+the saved controls (pose.png and/or depth.png and/or edges.png)
+
+
+same AR as meta.jsonl["ar"]
+
+
+Generate 4–8 seeds, pick best, apply light post (grain/vignette).
+
+
+
+If you want, I can also give Claude a secondary prompt to add a tiny ComfyUI headless workflow JSON for pose/depth extraction on RunPod, so you can just drop your dataset/clean in and auto-fill dataset/controls.
+
