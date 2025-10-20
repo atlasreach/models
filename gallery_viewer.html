@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoRA Test Results Gallery</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 10px;
+        }
+
+        h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 10px 20px;
+            background: #3a3a3a;
+            border: 2px solid #4a4a4a;
+            border-radius: 5px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .filter-btn:hover {
+            background: #4a4a4a;
+            border-color: #00a8ff;
+        }
+
+        .filter-btn.active {
+            background: #00a8ff;
+            border-color: #00a8ff;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 20px 0;
+        }
+
+        .image-card {
+            background: #2a2a2a;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
+        }
+
+        .image-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,168,255,0.3);
+        }
+
+        .image-card.favorite {
+            border: 3px solid #00ff00;
+        }
+
+        .image-card img {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .image-info {
+            padding: 15px;
+        }
+
+        .image-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+
+        .image-meta {
+            font-size: 0.8em;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+
+        .image-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 5px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }
+
+        .favorite-btn {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .favorite-btn:hover {
+            background: #27ae60;
+        }
+
+        .delete-btn {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .delete-btn:hover {
+            background: #c0392b;
+        }
+
+        .rating-stars {
+            display: flex;
+            gap: 5px;
+            margin: 10px 0;
+        }
+
+        .star {
+            font-size: 1.5em;
+            cursor: pointer;
+            color: #555;
+            transition: color 0.2s;
+        }
+
+        .star:hover,
+        .star.active {
+            color: #ffd700;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            max-width: 90%;
+            max-height: 90%;
+            position: relative;
+        }
+
+        .modal-content img {
+            max-width: 100%;
+            max-height: 90vh;
+            object-fit: contain;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            font-size: 40px;
+            color: white;
+            cursor: pointer;
+            z-index: 1001;
+        }
+
+        .modal-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .compare-mode {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #2a2a2a;
+            padding: 20px;
+            display: none;
+            flex-wrap: wrap;
+            gap: 10px;
+            max-height: 200px;
+            overflow-x: auto;
+            border-top: 3px solid #00a8ff;
+        }
+
+        .compare-mode.active {
+            display: flex;
+        }
+
+        .compare-item {
+            width: 150px;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #00a8ff;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #aaa;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 LoRA Test Results Gallery</h1>
+        <p>Review and compare your generated images</p>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalImages">0</div>
+                <div class="stat-label">Total Images</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="favoritesCount">0</div>
+                <div class="stat-label">Favorites ⭐</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgRating">0</div>
+                <div class="stat-label">Avg Rating</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="filter-btn active" data-filter="all">All Images</button>
+            <button class="filter-btn" data-filter="checkpoint">By Checkpoint</button>
+            <button class="filter-btn" data-filter="strength">By Strength</button>
+            <button class="filter-btn" data-filter="prompt">By Prompt</button>
+            <button class="filter-btn" data-filter="favorites">⭐ Favorites Only</button>
+            <button class="filter-btn" data-filter="5stars">5 Stars ⭐⭐⭐⭐⭐</button>
+        </div>
+    </div>
+
+    <div class="gallery" id="gallery">
+        <!-- Images will be loaded here -->
+    </div>
+
+    <div class="modal" id="modal">
+        <span class="modal-close" onclick="closeModal()">&times;</span>
+        <div class="modal-content">
+            <img id="modalImage" src="" alt="">
+            <div class="modal-info">
+                <h3 id="modalTitle"></h3>
+                <p id="modalMeta"></p>
+                <div class="rating-stars" id="modalRating"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="compare-mode" id="compareMode">
+        <p style="width: 100%; text-align: center; color: #aaa;">
+            Click images to compare (max 4)
+        </p>
+    </div>
+
+    <script>
+        // Image data storage
+        let images = [];
+        let favorites = new Set();
+        let ratings = {};
+        let compareList = [];
+
+        // Load images from folder (you'll need to update this)
+        function loadImages() {
+            // This would be populated from your actual generated images
+            // For now, showing example structure
+
+            // Example: scanning /workspace/ComfyUI/output/ for blondie images
+            // You'll run a Python script to generate this JSON
+
+            fetch('image_data.json')
+                .then(res => res.json())
+                .then(data => {
+                    images = data;
+                    renderGallery();
+                    updateStats();
+                })
+                .catch(() => {
+                    console.log('No image data found. Generate image_data.json first.');
+                });
+        }
+
+        function renderGallery(filter = 'all') {
+            const gallery = document.getElementById('gallery');
+            gallery.innerHTML = '';
+
+            let filteredImages = images;
+
+            if (filter === 'favorites') {
+                filteredImages = images.filter(img => favorites.has(img.filename));
+            } else if (filter === '5stars') {
+                filteredImages = images.filter(img => ratings[img.filename] === 5);
+            } else if (filter !== 'all') {
+                filteredImages = images.filter(img => img.category === filter);
+            }
+
+            filteredImages.forEach(img => {
+                const card = createImageCard(img);
+                gallery.appendChild(card);
+            });
+
+            updateStats();
+        }
+
+        function createImageCard(img) {
+            const card = document.createElement('div');
+            card.className = 'image-card';
+            if (favorites.has(img.filename)) {
+                card.classList.add('favorite');
+            }
+
+            card.innerHTML = `
+                <img src="${img.path}" alt="${img.filename}" onclick="openModal('${img.filename}')">
+                <div class="image-info">
+                    <div class="image-title">${img.filename}</div>
+                    <div class="image-meta">
+                        ${img.checkpoint ? `Checkpoint: ${img.checkpoint}<br>` : ''}
+                        ${img.strength ? `Strength: ${img.strength}<br>` : ''}
+                        ${img.prompt ? `Prompt: ${img.prompt.substring(0, 50)}...` : ''}
+                    </div>
+                    <div class="rating-stars" id="stars-${img.filename}">
+                        ${[1,2,3,4,5].map(n =>
+                            `<span class="star ${ratings[img.filename] >= n ? 'active' : ''}"
+                                   onclick="setRating('${img.filename}', ${n})">★</span>`
+                        ).join('')}
+                    </div>
+                    <div class="image-actions">
+                        <button class="action-btn favorite-btn" onclick="toggleFavorite('${img.filename}')">
+                            ${favorites.has(img.filename) ? '❤️ Favorited' : '🤍 Favorite'}
+                        </button>
+                        <button class="action-btn" onclick="addToCompare('${img.filename}', '${img.path}')">
+                            Compare
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        function openModal(filename) {
+            const img = images.find(i => i.filename === filename);
+            document.getElementById('modalImage').src = img.path;
+            document.getElementById('modalTitle').textContent = img.filename;
+            document.getElementById('modalMeta').innerHTML = `
+                Checkpoint: ${img.checkpoint || 'N/A'}<br>
+                Strength: ${img.strength || 'N/A'}<br>
+                Prompt: ${img.prompt || 'N/A'}
+            `;
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+
+        function toggleFavorite(filename) {
+            if (favorites.has(filename)) {
+                favorites.delete(filename);
+            } else {
+                favorites.add(filename);
+            }
+            localStorage.setItem('favorites', JSON.stringify([...favorites]));
+            renderGallery();
+        }
+
+        function setRating(filename, rating) {
+            ratings[filename] = rating;
+            localStorage.setItem('ratings', JSON.stringify(ratings));
+            renderGallery();
+        }
+
+        function addToCompare(filename, path) {
+            if (compareList.length < 4) {
+                compareList.push({filename, path});
+                updateCompareMode();
+            }
+        }
+
+        function updateCompareMode() {
+            const compareMode = document.getElementById('compareMode');
+            if (compareList.length > 0) {
+                compareMode.classList.add('active');
+                compareMode.innerHTML = compareList.map(img =>
+                    `<img src="${img.path}" class="compare-item" alt="${img.filename}">`
+                ).join('') +
+                `<button class="action-btn" onclick="clearCompare()">Clear</button>`;
+            } else {
+                compareMode.classList.remove('active');
+            }
+        }
+
+        function clearCompare() {
+            compareList = [];
+            updateCompareMode();
+        }
+
+        function updateStats() {
+            document.getElementById('totalImages').textContent = images.length;
+            document.getElementById('favoritesCount').textContent = favorites.size;
+
+            const avgRating = Object.values(ratings).length > 0
+                ? (Object.values(ratings).reduce((a,b) => a+b, 0) / Object.values(ratings).length).toFixed(1)
+                : 0;
+            document.getElementById('avgRating').textContent = avgRating;
+        }
+
+        // Filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                renderGallery(e.target.dataset.filter);
+            });
+        });
+
+        // Load saved data
+        window.onload = () => {
+            const savedFavorites = localStorage.getItem('favorites');
+            if (savedFavorites) {
+                favorites = new Set(JSON.parse(savedFavorites));
+            }
+
+            const savedRatings = localStorage.getItem('ratings');
+            if (savedRatings) {
+                ratings = JSON.parse(savedRatings);
+            }
+
+            loadImages();
+        };
+
+        // Close modal on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+    </script>
+</body>
+</html>
