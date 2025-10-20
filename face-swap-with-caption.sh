@@ -372,7 +372,7 @@ try:
             'ar': '4:5'
         }
 except Exception as e:
-    print(f"  ⚠ Error generating caption: {e}")
+    print(f"  ⚠ Error generating caption: {e}, using fallback and continuing...")
     metadata = {
         'caption': f'{TRIGGER_TOKEN} {CLASS_TOKEN}, portrait photograph',
         'recreation_prompt': 'Professional portrait photograph with natural lighting and shallow depth of field.',
